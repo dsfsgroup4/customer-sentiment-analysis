@@ -48,7 +48,7 @@ This project focuses on **sentiment analysis of customer comments** related to M
 
 ## 🛠️ Tech Stack (Planned/Used)
 
-- **Data Collection**: Python, API integrations (e.g. Trustpilot, Google Reviews)
+- **Data Collection**: Python, API integrations (e.g.Yelp reviews)
 - **NLP**: HuggingFace Transformers for sentiment analysis
 - **Dashboard**: Streamlit
 - **Model Deployment**: MLflow, FastAPI (future)
