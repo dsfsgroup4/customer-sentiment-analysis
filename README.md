@@ -1,5 +1,4 @@
-# Customer Sentiment Analysis for restaurant's reviews 🍟
-
+# Sentiment and thematic analysis from restaurants' client reviews  🍟
 
 This project focuses on **sentiment analysis of customer comments** related to McDonald's restaurants, aiming to provide actionable insights and faster customer feedback handling through data-driven automation and visualization.
 
