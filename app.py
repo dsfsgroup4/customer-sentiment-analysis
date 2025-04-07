@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 # ============================== CONFIG ==============================
-DATA_PATH = Path("data/model_roberta_results.csv")
+DATA_PATH = Path(r"data/model_roberta_results.csv")
 
 # ============================== PAGE SETUP ==============================
 st.set_page_config(layout="wide", page_title="Restaurant Review Dashboard", page_icon="📊")
