@@ -298,9 +298,9 @@ with dashboard_tab:
                 fig_map.update_layout(margin=dict(l=0, r=0, t=40, b=10))
                 st.plotly_chart(fig_map, use_container_width=True, config={'displayModeBar': False})
             else:
-                st.info("Aucune donnée de localisation disponible après filtrage.")
+                st.info("No location data available after filtering.")
         else:
-            st.info("Données de localisation incomplètes.")
+            st.info("Incomplete location data.")
 
 
     st.divider()
@@ -354,7 +354,7 @@ with dashboard_tab:
         fig_nps.update_layout(xaxis_title="NPS Score",yaxis_title="Restaurants") 
         st.plotly_chart(fig_nps, use_container_width=True )
     else:
-        st.info("Aucune donnée disponible pour afficher le NPS par ville.")
+        st.info("No NPS data available for city.")
 
     st.divider()
 
