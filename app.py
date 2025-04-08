@@ -1,5 +1,4 @@
-# Pour faire tourner le fichier app.py, il faut utiliser le resultats du modèle
-# RoBERTa qui se trouve dans le dossier data
+# Pour faire tourner le fichier app.py, il faut utiliser le fichier data_avec_labels.csv dans le dossier data
 
 import streamlit as st
 import pandas as pd
