@@ -5,19 +5,19 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-from pathlib import Path 
 import matplotlib.pyplot as plt
 import seaborn as sns
+from pathlib import Path
 
 # ============================== CONFIG ==============================
-DATA_PATH = Path("data\data_avec_labels.csv")
+DATA_PATH = Path("data/data_avec_labels.csv")
 
 # ============================== PAGE SETUP ==============================
 st.set_page_config(layout="wide", page_title="Restaurant Review Dashboard", page_icon="📊")
 
 st.markdown("""
     <div style='padding-left: 10px; padding-right: 10px;'>
-        <h3>Mcdonald's Dashboard</h3>
+        <h1>Mcdonald's Dashboard</h1>
     </div>
 """, unsafe_allow_html=True)
 
@@ -28,6 +28,7 @@ labels = [
     'location', 'speed of service', 'drive-thru', 'temperature of the food',
     'atmosphere', 'customer service', "temperature" , "price", "speed", "quality", "courtesy",
 ]
+
 
 # ============================== LOAD DATA ==============================
 @st.cache_data
@@ -125,7 +126,19 @@ def render_metric(label, value, bg_color, text_color):
     """
     st.markdown(f"""
         #### {label}
-        <div style='background-color:{bg_color}; padding: 0.7rem; border-radius: 6px; text-align:center; font-size:30px; color:{text_color};'>
+        <div style='
+            background-color:{bg_color}; 
+            border-radius: 50%; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align:center; 
+            font-size:20px; 
+            font-weight: bold;
+            width: 130px;
+            height: 110px;
+            margin: auto;
+            color:{text_color};'>
             {value if isinstance(value, str) else f"{value:,}"}
         </div>
     """, unsafe_allow_html=True)
@@ -145,6 +158,7 @@ def render_comments(title, comments, color_primary, color_secondary):
         st.markdown(f"<p style='color:{color_primary};'>{comment}</p>", unsafe_allow_html=True)
         st.markdown(f"<p style='color:{color_secondary};'>{labels_str}</p>", unsafe_allow_html=True)
 
+
 # ============================== MAIN APP ==============================
 with st.spinner("Loading data..."):
     df = load_data(DATA_PATH)
@@ -157,19 +171,22 @@ filtered_df = apply_filters(df)
 
 dashboard_tab, reviews_tab = st.tabs(["📊 Overview", "📈 Review Trends"])
 
-# ============================== NPS: Calcul des scores promoteurs / détracteurs ==============================
-# -----  -----
-def compute_nps_value(rating_int):
-    if rating_int in [4, 5]:
-        return 1
-    elif rating_int == 3:
-        return 0
-    elif rating_int in [1, 2]:
-        return -1
-    else:
-        return 0
 
-filtered_df["nps_value"] = filtered_df["rating_int"].apply(compute_nps_value)
+# ============================== NPS MAPPING HELPER ==============================
+
+def compute_nps_value(sentiment):
+    """
+    Convert sentiment to NPS value:
+    - 'positive' => +1 (Promoter)
+    - 'neutral'  =>  0 (Passive)
+    - 'negative' => -1 (Detractor)
+    """
+    return {'positive': 1, 'neutral': 0, 'negative': -1}.get(sentiment, 0)
+
+
+sentiment_mapping = {'positive': 1, 'neutral': 0, 'negative': -1}
+filtered_df["nps_value"] = filtered_df["pred_sentiment"].map(sentiment_mapping).fillna(0)
+
 
 # Calcul des % par catégorie
 promoters_pct = (filtered_df["nps_value"] == 1).mean() * 100
@@ -179,88 +196,84 @@ passives_pct = (filtered_df["nps_value"] == 0).mean() * 100
 # NPS Global
 nps_score = promoters_pct - detractors_pct
 
+#liste the NPS max et minim
+max_value_pd = filtered_df["nps_value"].max()* 100
+min_value_pd = filtered_df["nps_value"].min()* 100
 
 
-# ============================== METRICS ==============================
+# ============================== METRICS ====================================================
 with dashboard_tab:
     total_reviews = len(filtered_df)
-    pos_reviews = len(filtered_df[filtered_df["pred_sentiment"] == "positive"])
-    neg_reviews = len(filtered_df[filtered_df["pred_sentiment"] == "negative"])
-    neu_reviews = len(filtered_df[filtered_df["pred_sentiment"] == "neutral"])
 
+    # ============================== AFFICHAGE DU SCORE NPS GLOBAL ==============================
 
-    # ----- CALCUL ET AFFICHAGE DU NPS (APPROCHE PAR POURCENTAGE) -----
+        # Appliquer la fonction pour créer une colonne 'nps_value'
+    filtered_df["nps_value"] = filtered_df["pred_sentiment"].apply(compute_nps_value)
 
-# 1. Définir la fonction pour convertir une note en valeur NPS
-    def compute_nps_value(rating_int):
-        """
-        Convertit une note (1 à 5) en une valeur NPS.
-        - 4 ou 5 -> +1 (Promoteur)
-        - 3     ->  0 (Passif)
-        - 1 ou 2 -> -1 (Détracteur)
-        """
-        if rating_int in [4, 5]:
-            return 1
-        elif rating_int == 3:
-            return 0
-        elif rating_int in [1, 2]:
-            return -1
-        else:
-            return 0
-
-    # 2. Appliquer la fonction pour créer une colonne 'nps_value'
-    filtered_df["nps_value"] = filtered_df["rating_int"].apply(compute_nps_value)
-
-    # 3. Calculer les pourcentages
+    # Calculer les pourcentages
     promoters_pct = (filtered_df["nps_value"] == 1).mean() * 100
     detractors_pct = (filtered_df["nps_value"] == -1).mean() * 100
     passives_pct = (filtered_df["nps_value"] == 0).mean() * 100
 
-    # 4. Affichage des métriques
+    # Affichage des métriques
     total_reviews = len(filtered_df)
-
-    metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-    with metric_col1:
-        render_metric("📊 Total Reviews", total_reviews, "#2E3B4E", "white")
-    with metric_col2:
-        render_metric("🙂 Promoteurs (%)", f"{promoters_pct:.1f}%", "#1e3d2f", "#b7f7d0")
-    with metric_col3:
-        render_metric("😠 Détracteurs (%)", f"{detractors_pct:.1f}%", "#3d1e1e", "#ffb6b6")
-    with metric_col4:
-        render_metric("😐 Passifs (%)", f"{passives_pct:.1f}%", "#444444", "#eeeeee")
-
-
-# ============================== AFFICHAGE DU SCORE NPS GLOBAL ==============================
-    nps_color = "#1e3d2f" if nps_score > 50 else "#f9b233" if nps_score > 0 else "#7a0000"
+    nps_color = "#1aa442" if nps_score > 50 else "#b36500" if nps_score > 0 else "#aa0000"
     nps_text_color = "#ffffff"
 
-    st.markdown("### 🧮 NPS Global Score")
-    nps_col = st.columns(1)[0]
+    # Metric in circles 
+    st.markdown("### 🧮 NPS Score  \n_**NPS** = %Promoters - %Detractors_")
+    
+    st.markdown("<div  style='height: 0px;  display: flex; align-items: center;'>", unsafe_allow_html=True)
+
+    total_col,nps_col, prom_col,detract_col, passif_col = st.columns(5)
+
+    with total_col:
+        render_metric("📊 Total Reviews", total_reviews, "#2E3B4E", "white")
     with nps_col:
         render_metric("NPS Score", f"{nps_score:.1f}", nps_color, nps_text_color)
 
+    with prom_col:
+        render_metric("🙂 Promoters", f"{promoters_pct:.1f}%", "#137830", "#b7f7d0")
+    
+    with detract_col:
+        render_metric("😠 Detractors", f"{detractors_pct:.1f}%", "#aa0000", "#ffb6b6")
+    with passif_col:
+        render_metric("😐 Passives", f"{passives_pct:.1f}%", "#b36500", "#eeeeee")
 
-    st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     st.divider()
+
+
 
 # ============================== LOCATION MAP AND WEEKLY TRENDS ==============================
     st.subheader("🗺️ Mcdonald's US Map")
     map_col = st.columns(1)[0]
 
     with map_col:
-        if {"latitude", "longitude", "City", "store_address", "rating_int"}.issubset(filtered_df.columns):
+        if {"latitude", "longitude", "City", "store_address", "pred_sentiment"}.issubset(filtered_df.columns):
             # Préparer les données avec coordonnées uniques + avis + NPS
             location_df = filtered_df.dropna(subset=["latitude", "longitude", "store_address"])
 
             # Calcul des nps_value
-            location_df["nps_value"] = location_df["rating_int"].apply(compute_nps_value)
+            location_df["nps_value"] = location_df["pred_sentiment"].apply(compute_nps_value)
+
 
             # Grouper par restaurant (coordonnées + adresse)
             map_data = location_df.groupby(["latitude", "longitude", "store_address"]).agg(
-                review_count=("review", "count"),
+                review_count=("clean_reviews", "count"),
                 nps_score=("nps_value", lambda x: (x == 1).mean()*100 - (x == -1).mean()*100)
             ).reset_index()
+
+            # Color scale is constant regardless of data
+            fixed_nps_range = [min_value_pd, max_value_pd]
+                                        
+            # Define custom color gradient (red to white to green)
+            custom_nps_scale = [
+                [0.0, "red"],     # minimum NPS
+                [0.4, "orange"],   # neutral
+                [1.0, "green"]    # maximum NPS
+]
 
             if not map_data.empty:
                 fig_map = px.scatter_geo(
@@ -269,12 +282,17 @@ with dashboard_tab:
                     lon="longitude",
                     size="review_count",
                     color="nps_score",
-                    color_continuous_scale="RdYlGn",
+                    color_continuous_scale=custom_nps_scale,
+                    range_color=fixed_nps_range,
                     hover_name="store_address",
+                    hover_data={
+                    "nps_score": ':.1f',
+                    "review_count": True
+                        },
                     size_max=30,
                     scope="usa",
                     template="plotly_dark",
-                    title="Localisation des restaurants (taille = avis, couleur = NPS)",
+                    title="Location of restaurants (size = reviews, color = NPS)",
                     height=450
                 )
                 fig_map.update_layout(margin=dict(l=0, r=0, t=40, b=10))
@@ -287,83 +305,59 @@ with dashboard_tab:
 
     st.divider()
 
-    
 # ============================== NPS PAR VILLE ============================== 
-    st.markdown("### 🏙️ NPS par Ville")
+    st.markdown("### 🏙️ NPS Scores of restaurants")
 
-    if "City" in filtered_df.columns and not filtered_df["City"].isna().all():
-        nps_by_city = filtered_df.groupby("City").apply(
-            lambda d: (d["nps_value"] == 1).mean()*100 - (d["nps_value"] == -1).mean()*100
-        ).reset_index(name="NPS")
+    # Retrieve current filters from session stat
+    filters = st.session_state.get("selected_filters", {})
+    start = filters.get("start_date")
+    end = filters.get("end_date")
+
+    # Build dynamic title based on the "address" filter:
+    selected_scope = "All Restaurants" if filters.get("address") == "All" else f"📍 {filters.get('address')}"
+    nps_title = f"**NPS per Restaurant for:** {selected_scope} — _{start.strftime('%b %d, %Y')} to {end.strftime('%b %d, %Y')}_"
+
+    # Display the dynamic title in the app
+    st.markdown(nps_title)
+
+    if "store_address" in filtered_df.columns and not filtered_df["store_address"].isna().all():
+        # Group by restaurant and compute NPS score as the difference between the percentage of promoters and detractors
+        nps_by_restaurant = (
+            filtered_df.groupby("store_address")
+            .agg(
+                NPS=("nps_value", lambda x: (x == 1).mean() * 100 - (x == -1).mean() * 100),
+                review_count=("nps_value", "count"),
+                City=("City", "first"),
+                State=("State", "first")
+            )
+            .reset_index()
+            .sort_values("NPS", ascending=True)  # Sort from highest to lowest NPS
+        )
 
         fig_nps = px.bar(
-            nps_by_city,
-            x="City",
-            y="NPS",
+            nps_by_restaurant,
+            x="NPS",
+            y="store_address",
+            orientation="h",
             color="NPS",
-            color_continuous_scale="RdYlGn",
-            title="NPS par Ville",
+            color_continuous_scale=custom_nps_scale,
+            hover_data={
+                "NPS": ":.2f",
+                "review_count": True,
+                "City": True,
+                "State": True
+                        },
             template="plotly_dark",
-            height=400
+            height=700
         )
-        fig_nps.update_layout(xaxis_tickangle=-45)
-        st.plotly_chart(fig_nps, use_container_width=True)
+        # Rotate x-axis labels to improve readability
+        fig_nps.update_layout(xaxis_title="NPS Score",yaxis_title="Restaurants") 
+        st.plotly_chart(fig_nps, use_container_width=True )
     else:
         st.info("Aucune donnée disponible pour afficher le NPS par ville.")
 
     st.divider()
 
-
-# ============================== SENTIMENT TREND ROW ==============================
-    st.subheader("Sentiment Trends")
-    trends_row = st.columns(1)[0]
-
-    with trends_row:
-        df_trends = filtered_df[filtered_df["review_date"].notna()].copy()
-
-        # Load current filters from session state
-        filters = st.session_state.get("selected_filters", {})
-        start = pd.to_datetime(filters.get("start_date", df_trends["review_date"].min()))
-        end = pd.to_datetime(filters.get("end_date", df_trends["review_date"].max()))
-
-        # Ensure valid date types
-        if pd.isna(start): start = df_trends["review_date"].min()
-        if pd.isna(end): end = df_trends["review_date"].max()
-
-        # Filter by date
-        df_trends = df_trends[(df_trends["review_date"] >= start) & (df_trends["review_date"] <= end)]
-
-        # Group by day and sentiment
-        df_trends["day"] = df_trends["review_date"].dt.date
-        sentiment_counts = df_trends.groupby(["day", "pred_sentiment"]).size().reset_index(name="count")
-
-        # Optional debug
-        # st.write("Filtered trend size:", sentiment_counts.shape)
-
-        # Dynamic subtitle based on filters
-        selected_scope = "National" if filters.get("address") == "All" else f"📍 {filters.get('address')}"
-        trend_subtitle = f"**Sentiment Trend for:** {selected_scope} — _{start.strftime('%b %d, %Y')} to {end.strftime('%b %d, %Y')}_"
-        st.markdown(trend_subtitle)
-
-        # Plot
-        if sentiment_counts.empty:
-            st.info("No sentiment data available for the selected period.")
-        else:
-            fig_sentiment = px.line(
-                sentiment_counts,
-                x="day",
-                y="count",
-                color="pred_sentiment",
-                markers=True,
-                title=None,
-                template="plotly_dark",
-                color_discrete_map={"positive": "green", "neutral": "orange", "negative": "red"},
-                hover_data={"count": True}
-            )
-            st.plotly_chart(fig_sentiment, use_container_width=True, config={'displayModeBar': False})
-
-        st.divider()
-    
 # ============================== TOP COMMENTS ==============================
     st.markdown("### 🗨️ Top topics")
 
@@ -394,7 +388,6 @@ with dashboard_tab:
         st.pyplot(plt)
 
     
-
     comment_col1, comment_col2 = st.columns(2)
 
     # Palette de couleurs par sentiment
@@ -415,7 +408,6 @@ with dashboard_tab:
         top_neg = top_neg_df["review"].head(5)
         style = sentiment_styles["negative"]
         render_comments(style["label"], top_neg, style["bg"], style["text"])
-
 
 
 
