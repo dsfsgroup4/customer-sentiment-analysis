@@ -368,7 +368,6 @@ with dashboard_tab:
 
 
 
-
 # ============================== EMPTY STATE ==============================
 if filtered_df.empty:
     st.warning("No reviews match the selected filters. Try adjusting them.")
