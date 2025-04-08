@@ -1,10 +1,10 @@
-# Pour faire tourner le fichier app.py, il faut utiliser le 
-# fichier "data_avec_labels.csv" qui se trouve dans le dossier data
+# Pour faire tourner le fichier app.py, il faut utiliser le resultats du modèle
+# RoBERTa qui se trouve dans le dossier data
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
@@ -133,10 +133,10 @@ def render_metric(label, value, bg_color, text_color):
             align-items: center;
             justify-content: center;
             text-align:center; 
-            font-size:20px; 
+            font-size:25px; 
             font-weight: bold;
-            width: 130px;
-            height: 110px;
+            width: 150px;
+            height: 150px;
             margin: auto;
             color:{text_color};'>
             {value if isinstance(value, str) else f"{value:,}"}
@@ -207,22 +207,33 @@ with dashboard_tab:
 
     # ============================== AFFICHAGE DU SCORE NPS GLOBAL ==============================
 
-        # Appliquer la fonction pour créer une colonne 'nps_value'
+    #====== Appliquer la fonction pour créer une colonne 'nps_value'==========
     filtered_df["nps_value"] = filtered_df["pred_sentiment"].apply(compute_nps_value)
 
-    # Calculer les pourcentages
+    #========= Calculer les pourcentages ===============
     promoters_pct = (filtered_df["nps_value"] == 1).mean() * 100
     detractors_pct = (filtered_df["nps_value"] == -1).mean() * 100
     passives_pct = (filtered_df["nps_value"] == 0).mean() * 100
 
-    # Affichage des métriques
+    #========= Affichage des métriques ==================
     total_reviews = len(filtered_df)
     nps_color = "#1aa442" if nps_score > 50 else "#b36500" if nps_score > 0 else "#aa0000"
     nps_text_color = "#ffffff"
 
-    # Metric in circles 
-    st.markdown("### 🧮 NPS Score  \n_**NPS** = %Promoters - %Detractors_")
-    
+    #========= Tooltip of NPS ==========================
+    with st.expander("ℹ️ What is NPS?", expanded=False):
+        st.markdown("""
+            **Net Promoter Score (NPS)** measures customer loyalty by subtracting the percentage of detractors from promoters.
+            
+            - **Promoters** (positive): Loyal enthusiasts.
+            - **Passives** (neutral): Satisfied but unenthusiastic.
+            - **Detractors** (negative): Unhappy customers.
+
+            **NPS = %Promoters - %Detractors**
+        """)
+
+    # ============== NPS Title =========================
+    st.markdown("### 🧮 NPS Score ")
     st.markdown("<div  style='height: 0px;  display: flex; align-items: center;'>", unsafe_allow_html=True)
 
     total_col,nps_col, prom_col,detract_col, passif_col = st.columns(5)
@@ -245,8 +256,18 @@ with dashboard_tab:
     st.divider()
 
 
-
 # ============================== LOCATION MAP AND WEEKLY TRENDS ==============================
+
+    # ======= US MAP Tooltip =======
+    with st.expander("ℹ️ About this Map"):
+        st.markdown("""
+        This map shows McDonald's locations across the US. 
+        - **Bubble size** = Number of reviews
+        - **Color** = NPS score (green = high, red = low)
+        - Hover over bubbles to explore store details.
+    """)
+
+    # ============= MCdonalds US map ==============
     st.subheader("🗺️ Mcdonald's US Map")
     map_col = st.columns(1)[0]
 
@@ -305,7 +326,17 @@ with dashboard_tab:
 
     st.divider()
 
-# ============================== NPS PAR VILLE ============================== 
+# ========================== NPS by restaurant Bar Chart ============================ 
+    # ======= NPS by Restaurant Bar chart ==========
+    with st.expander("ℹ️ About NPS Scores of restaurants Bar Chart"):
+        st.markdown("""
+        This chart shows Net Promoter Score (NPS) for each store based on filtered date and location.
+        
+        - **Higher bars** mean better customer sentiment.
+        - Hover over a bar to get restaurant's info like review count, city, and state.
+    """)
+
+    # NPS Scores of restaurants' title
     st.markdown("### 🏙️ NPS Scores of restaurants")
 
     # Retrieve current filters from session stat
@@ -354,38 +385,50 @@ with dashboard_tab:
         fig_nps.update_layout(xaxis_title="NPS Score",yaxis_title="Restaurants") 
         st.plotly_chart(fig_nps, use_container_width=True )
     else:
-        st.info("No NPS data available for city.")
+        st.info("Aucune donnée disponible pour afficher le NPS par ville.")
 
     st.divider()
 
 # ============================== TOP COMMENTS ==============================
     st.markdown("### 🗨️ Top topics")
+    with st.expander("ℹ️ What's This?"):
+        st.markdown("""
+        These are the most frequent topics mentioned in reviews.
+        Based on review content and labels predicted.
+    """)
+
 
     topics_col1, topics_col2 = st.columns(2)
-
+    
+    # ====== Bar graph de Top topic positive ============
     with topics_col1:
         positive_df = filtered_df[filtered_df['pred_sentiment'] == 'positive']
         top_topics = (positive_df[labels] > seuil).sum().sort_values(ascending=False).head(10)        
 
-        plt.figure(figsize=(10, 15))
-        sns.barplot(x=top_topics.values, y=top_topics.index, palette=["green"])
+        fig_topics = go.Figure()
 
-        # Ajuster la taille du texte
-        plt.xticks(fontsize=25)
-        plt.yticks(fontsize=25)
+        fig_topics.add_trace(go.Bar(
+            x=top_topics.values,
+            y=top_topics.index,
+            orientation='h',
+            marker=dict(color='green'),
+            text=top_topics.values,
+            textposition='auto',
+            hovertemplate='%{y}: %{x} mentions<extra></extra>',
+        ))
 
-        # Ajouter des annotations
-        for i, v in enumerate(top_topics.values):
-            plt.text(v + 0.1, i, str(v), color='black', va='center', fontsize=14)
+        fig_topics.update_layout(
+            title="Most Frequent Positive Topics",
+            xaxis_title="Mention Count",
+            yaxis_title="Topic",
+            height=500,
+            template="plotly_dark",
+            margin=dict(l=20, r=20, t=50, b=20),
+        )
 
-        # Retirer le fond blanc
-        plt.box(False)
+        fig_topics.update_yaxes(autorange="reversed")  # Most frequent on top
+        st.plotly_chart(fig_topics, use_container_width=True)
 
-        # Retirer l'axe horizontal et vertical
-        plt.gca().xaxis.set_visible(False)
-
-        # Afficher le graphique dans Streamlit
-        st.pyplot(plt)
 
     
     comment_col1, comment_col2 = st.columns(2)
