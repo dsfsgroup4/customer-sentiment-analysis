@@ -41,7 +41,7 @@ This project focuses on **sentiment analysis of customer comments** related to M
 ## 🌱 Future Improvements
 
 - 💬 **LLM-Powered Auto-Responses**
-  - Use a contextual LLM (like GPT-4) to understand and respond to positive or negative feedback.
+  - Use a contextual LLM to understand and respond to positive or negative feedback.
   - Fine-tune a model to **generate personalized replies** that match the tone and content of each comment.
 
 ---
@@ -49,10 +49,9 @@ This project focuses on **sentiment analysis of customer comments** related to M
 ## 🛠️ Tech Stack (Planned/Used)
 
 - **Data Collection**: Python, API integrations (e.g.Yelp reviews)
-- **NLP**: HuggingFace Transformers for sentiment analysis
+- **NLP**: RoBERTa
 - **Dashboard**: Streamlit
-- **Model Deployment**: MLflow, FastAPI (future)
-- **Auto Response Generation**: GPT-4 / Fine-tuned LLM (future)
+- **Auto Response Generation**: Mistral
 
 ---
 
