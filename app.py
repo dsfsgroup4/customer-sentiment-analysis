@@ -133,7 +133,7 @@ def render_metric(label, value, bg_color, text_color):
             text-align:center; 
             font-size:25px; 
             font-weight: bold;
-            width: 156px;
+            width: 150px;
             height: 150px;
             margin: auto;
             color:{text_color};'>
@@ -217,22 +217,10 @@ with dashboard_tab:
     nps_color = "#1aa442" if nps_score > 50 else "#b36500" if nps_score > 0 else "#aa0000"
     nps_text_color = "#ffffff"
 
-    #========= Tooltip of NPS ==========================
-    with st.expander("ℹ️ What is NPS?", expanded=False):
-        st.markdown("""
-            **Net Promoter Score (NPS)** measures customer loyalty by subtracting the percentage of detractors from promoters.
-            
-            - **Promoters** (positive): Loyal enthusiasts.
-            - **Passives** (neutral): Satisfied but unenthusiastic.
-            - **Detractors** (negative): Unhappy customers.
-
-            **NPS = %Promoters - %Detractors**
-        """)
-
     # ============== NPS Container des Promoters, Passives, Detractors =========================
 
     # Create two outer columns side by side.
-    total_col, nps_container = st.columns(2)
+    total_col, prom_col, passif_col, detract_col = st.columns(4)
 
     with total_col:
         st.markdown(f"""
@@ -250,17 +238,14 @@ with dashboard_tab:
                 {total_reviews if isinstance(total_reviews, str) else f"{total_reviews:,}"}
             </div>
         """, unsafe_allow_html=True)
-                
-    with nps_container:
-        # Use a container to group the NPS Score metric and its nested columns vertically.
-        with st.container():
-            prom_col, passif_col, detract_col = st.columns(3)
-            with prom_col:
-                render_metric("🙂 Promoters", f"{promoters_pct:.1f}%", "#137830", "#b7f7d0")
-            with passif_col:
-                render_metric("😐 Passives", f"{passives_pct:.1f}%", "#b36500", "#eeeeee")
-            with detract_col:
-                render_metric("😠 Detractors", f"{detractors_pct:.1f}%", "#aa0000", "#ffb6b6")
+
+
+    with prom_col:
+        render_metric("🙂 Promoters", f"{promoters_pct:.1f}%", "#137830", "#b7f7d0")
+    with passif_col:
+        render_metric("😐 Passives", f"{passives_pct:.1f}%", "#b36500", "#eeeeee")
+    with detract_col:
+        render_metric("😠 Detractors", f"{detractors_pct:.1f}%", "#aa0000", "#ffb6b6")
 
     st.divider()
 
