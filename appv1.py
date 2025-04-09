@@ -1,22 +1,23 @@
-# Pour faire tourner le fichier app.py, il faut utiliser le fichier data_avec_labels.csv dans le dossier data
+# Pour faire tourner le fichier app.py, il faut utiliser le resultats du modèle
+# RoBERTa qui se trouve dans le dossier data
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
+from datetime import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 
 # ============================== CONFIG ==============================
-DATA_PATH = Path("data\data_avec_labels.csv")
+DATA_PATH = Path("data/data_avec_labels.csv")
 
 # ============================== PAGE SETUP ==============================
 st.set_page_config(layout="wide", page_title="Restaurant Review Dashboard", page_icon="📊")
 
 st.markdown("""
     <div style='padding-left: 10px; padding-right: 10px;'>
-        <h3>Mcdonald's Dashboard</h3>
+        <h1>Mcdonald's Dashboard</h1>
     </div>
 """, unsafe_allow_html=True)
 
@@ -27,6 +28,7 @@ labels = [
     'location', 'speed of service', 'drive-thru', 'temperature of the food',
     'atmosphere', 'customer service', "temperature" , "price", "speed", "quality", "courtesy",
 ]
+
 
 # ============================== LOAD DATA ==============================
 @st.cache_data
@@ -126,15 +128,15 @@ def render_metric(label, value, bg_color, text_color):
         #### {label}
         <div style='
             background-color:{bg_color}; 
-            border-radius: 60%; 
+            border-radius: 50%; 
             display: flex;
             align-items: center;
             justify-content: center;
             text-align:center; 
-            font-size:25px; 
+            font-size:20px; 
             font-weight: bold;
-            width: 156px;
-            height: 150px;
+            width: 130px;
+            height: 110px;
             margin: auto;
             color:{text_color};'>
             {value if isinstance(value, str) else f"{value:,}"}
@@ -145,16 +147,17 @@ def render_metric(label, value, bg_color, text_color):
 # Seuil pour filtrer les labels
 seuil = 0.2
 
-def render_comments(comments, color_primary, color_secondary):
+def render_comments(title, comments, color_primary, color_secondary):
     """Render a list of comments in stylized boxes."""
+    st.markdown(f"#### {title}")
     for index, comment in comments.items():
         # Récupérer les labels avec un score supérieur au seuil pour ce commentaire
         labels_above_threshold = df[labels].loc[index] > seuil
         selected_labels = df[labels].columns[labels_above_threshold].tolist()
         labels_str = " ".join([f"#{label}" for label in selected_labels])
-        formatted_comment = comment.replace('\n', ' ')
-        st.markdown(f"<p style='color:{color_primary};'>💬 {formatted_comment}</p>", unsafe_allow_html=True)
-        st.markdown(f"<p style='color:{color_secondary}; font-weight: bold;'>{labels_str}</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='color:{color_primary};'>{comment}</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='color:{color_secondary};'>{labels_str}</p>", unsafe_allow_html=True)
+
 
 # ============================== MAIN APP ==============================
 with st.spinner("Loading data..."):
@@ -167,6 +170,7 @@ if df.empty:
 filtered_df = apply_filters(df)
 
 dashboard_tab, reviews_tab = st.tabs(["📊 Overview", "📈 Review Trends"])
+
 
 # ============================== NPS MAPPING HELPER ==============================
 
@@ -197,40 +201,28 @@ max_value_pd = filtered_df["nps_value"].max()* 100
 min_value_pd = filtered_df["nps_value"].min()* 100
 
 
-
 # ============================== METRICS ====================================================
 with dashboard_tab:
     total_reviews = len(filtered_df)
 
     # ============================== AFFICHAGE DU SCORE NPS GLOBAL ==============================
 
-    #====== Appliquer la fonction pour créer une colonne 'nps_value'==========
+        # Appliquer la fonction pour créer une colonne 'nps_value'
     filtered_df["nps_value"] = filtered_df["pred_sentiment"].apply(compute_nps_value)
 
-    #========= Calculer les pourcentages ===============
+    # Calculer les pourcentages
     promoters_pct = (filtered_df["nps_value"] == 1).mean() * 100
     detractors_pct = (filtered_df["nps_value"] == -1).mean() * 100
     passives_pct = (filtered_df["nps_value"] == 0).mean() * 100
 
-    #========= Affichage des métriques ==================
+    # Affichage des métriques
     total_reviews = len(filtered_df)
     nps_color = "#1aa442" if nps_score > 50 else "#b36500" if nps_score > 0 else "#aa0000"
     nps_text_color = "#ffffff"
 
-    #========= Tooltip of NPS ==========================
-    with st.expander("ℹ️ What is NPS?", expanded=False):
-        st.markdown("""
-            **Net Promoter Score (NPS)** measures customer loyalty by subtracting the percentage of detractors from promoters.
-            
-            - **Promoters** (positive): Loyal enthusiasts.
-            - **Passives** (neutral): Satisfied but unenthusiastic.
-            - **Detractors** (negative): Unhappy customers.
-
-            **NPS = %Promoters - %Detractors**
-        """)
-
-    # ============== NPS Title =========================
-    st.markdown("### 🧮 NPS Score ")
+    # Metric in circles 
+    st.markdown("### 🧮 NPS Score  \n_**NPS** = %Promoters - %Detractors_")
+    
     st.markdown("<div  style='height: 0px;  display: flex; align-items: center;'>", unsafe_allow_html=True)
 
     total_col,nps_col, prom_col,detract_col, passif_col = st.columns(5)
@@ -252,18 +244,9 @@ with dashboard_tab:
 
     st.divider()
 
+
+
 # ============================== LOCATION MAP AND WEEKLY TRENDS ==============================
-
-    # ======= US MAP Tooltip =======
-    with st.expander("ℹ️ About this Map"):
-        st.markdown("""
-        This map shows McDonald's locations across the US. 
-        - **Bubble size** = Number of reviews
-        - **Color** = NPS score (green = high, red = low)
-        - Hover over bubbles to explore store details.
-    """)
-
-    # ============= MCdonalds US map ==============
     st.subheader("🗺️ Mcdonald's US Map")
     map_col = st.columns(1)[0]
 
@@ -315,25 +298,14 @@ with dashboard_tab:
                 fig_map.update_layout(margin=dict(l=0, r=0, t=40, b=10))
                 st.plotly_chart(fig_map, use_container_width=True, config={'displayModeBar': False})
             else:
-                st.info("No location data available after filtering.")
+                st.info("Aucune donnée de localisation disponible après filtrage.")
         else:
-            st.info("Incomplete location data.")
+            st.info("Données de localisation incomplètes.")
 
 
     st.divider()
 
-    
-# ========================== NPS by restaurant Bar Chart ============================ 
-    # ======= NPS by Restaurant Bar chart ==========
-    with st.expander("ℹ️ About NPS Scores of restaurants Bar Chart"):
-        st.markdown("""
-        This chart shows Net Promoter Score (NPS) for each store based on filtered date and location.
-        
-        - **Higher bars** mean better customer sentiment.
-        - Hover over a bar to get restaurant's info like review count, city, and state.
-    """)
-
-    # NPS Scores of restaurants' title
+# ============================== NPS PAR VILLE ============================== 
     st.markdown("### 🏙️ NPS Scores of restaurants")
 
     # Retrieve current filters from session stat
@@ -386,158 +358,59 @@ with dashboard_tab:
 
     st.divider()
 
-    
-# ============================== TOP TOPICS ==============================
-    
+# ============================== TOP COMMENTS ==============================
+    st.markdown("### 🗨️ Top topics")
 
     topics_col1, topics_col2 = st.columns(2)
 
     with topics_col1:
-        st.markdown("#### 😍 Most Frequent Positive Topics")
         positive_df = filtered_df[filtered_df['pred_sentiment'] == 'positive']
         top_topics = (positive_df[labels] > seuil).sum().sort_values(ascending=False).head(10)        
 
-        fig_topics = go.Figure()
+        plt.figure(figsize=(10, 15))
+        sns.barplot(x=top_topics.values, y=top_topics.index, palette=["green"])
 
-        fig_topics.add_trace(go.Bar(
-            x=top_topics.values,
-            y=top_topics.index,
-            orientation='h',
-            marker=dict(color='green'),
-            text=top_topics.values,
-            textposition='auto',
-            hovertemplate='%{y}: %{x} mentions<extra></extra>',
-        ))
+        # Ajuster la taille du texte
+        plt.xticks(fontsize=25)
+        plt.yticks(fontsize=25)
 
-        fig_topics.update_layout(
-            xaxis_title="Mention Count",
-            yaxis_title="Topic",
-            height=500,
-            template="plotly_dark",
-            margin=dict(l=20, r=20, t=50, b=20),
-        )
+        # Ajouter des annotations
+        for i, v in enumerate(top_topics.values):
+            plt.text(v + 0.1, i, str(v), color='black', va='center', fontsize=14)
 
-        fig_topics.update_yaxes(autorange="reversed")  # Most frequent on top
-        st.plotly_chart(fig_topics, use_container_width=True)
+        # Retirer le fond blanc
+        plt.box(False)
 
+        # Retirer l'axe horizontal et vertical
+        plt.gca().xaxis.set_visible(False)
 
-    with topics_col2:
-        st.markdown("#### 🤬 Most Frequent Negative Topics")
-        negative_df = filtered_df[filtered_df['pred_sentiment'] == 'negative']
-        top_topics = (negative_df[labels] > seuil).sum().sort_values(ascending=False).head(10)        
+        # Afficher le graphique dans Streamlit
+        st.pyplot(plt)
 
-        fig_topics = go.Figure()
-
-        fig_topics.add_trace(go.Bar(
-            x=top_topics.values,
-            y=top_topics.index,
-            orientation='h',
-            marker=dict(color='red'),
-            text=top_topics.values,
-            textposition='auto',
-            hovertemplate='%{y}: %{x} mentions<extra></extra>',
-        ))
-
-        fig_topics.update_layout(
-            xaxis_title="Mention Count",
-            yaxis_title="Topic",
-            height=500,
-            template="plotly_dark",
-            margin=dict(l=20, r=20, t=50, b=20),
-        )
-
-        fig_topics.update_yaxes(autorange="reversed")  # Most frequent on top
-        st.plotly_chart(fig_topics, use_container_width=True)
     
-# ============================== TOP COMMENTS ==============================
-    # Initialiser l'état de la session pour le suivi des index de départ et des pages
-    if 'positive_start_index' not in st.session_state:
-        st.session_state.positive_start_index = 0
-    if 'negative_start_index' not in st.session_state:
-        st.session_state.negative_start_index = 0
-    if 'positive_page' not in st.session_state:
-        st.session_state.positive_page = 1
-    if 'negative_page' not in st.session_state:
-        st.session_state.negative_page = 1
-
     comment_col1, comment_col2 = st.columns(2)
 
     # Palette de couleurs par sentiment
     sentiment_styles = {
-        "positive": {"bg": "#b7f7d0", "text": "#b7f7d0", "label": "👍 Positive Comments"},
+        "positive": {"bg": "#b7f7d0", "text": "#1e3d2f", "label": "👍 Top Positive Comments"},
         "neutral": {"bg": "#4b4b1e", "text": "#f9eec0", "label": "😐 Neutral Comments"},
-        "negative": {"bg": "#ffb6b6", "text": "#ffb6b6", "label": "👎 Negative Comments"},
+        "negative": {"bg": "#ffb6b6", "text": "#3d1e1e", "label": "👎 Top Negative Comments"},
     }
 
     with comment_col1:
+        top_pos_df = filtered_df[filtered_df["pred_sentiment"] == "positive"].sort_values(by='RoBERTa_score', ascending=False)
+        top_pos = top_pos_df["review"].head(5)
         style = sentiment_styles["positive"]
-        st.markdown(f"#### {style['label']}")
-
-        # Ajouter un menu déroulant pour sélectionner un sujet
-        selected_top_topic = st.selectbox("Select a topic to filter the good comments", options=["All"] + labels, key="positive_topic")
-
-        # Filtrer le DataFrame en fonction du sujet sélectionné
-        if selected_top_topic != "All":
-            topic_filtered_df = filtered_df[filtered_df[selected_top_topic] > seuil]
-        else:
-            topic_filtered_df = filtered_df
-
-        top_pos_df = topic_filtered_df[topic_filtered_df["pred_sentiment"] == "positive"].sort_values(by='RoBERTa_score', ascending=False)
-        top_pos = top_pos_df["review"].iloc[st.session_state.positive_start_index:st.session_state.positive_start_index+5]
-        render_comments(top_pos, style["bg"], style["text"])
-
-        # Afficher le numéro de la page
-        st.write(f"Page {st.session_state.positive_page}")
-
-        # Ajouter des boutons pour charger les commentaires précédents et suivants
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            if st.session_state.positive_page > 1:
-                if st.button("Previous", key="positive_prev_button"):
-                    st.session_state.positive_start_index -= 5
-                    st.session_state.positive_page -= 1
-                    st.rerun()
-        with col2:
-            if st.session_state.positive_start_index + 5 < len(top_pos_df):
-                if st.button("Next", key="positive_next_button"):
-                    st.session_state.positive_start_index += 5
-                    st.session_state.positive_page += 1
-                    st.rerun()
+        render_comments(style["label"], top_pos, style["bg"], style["text"])
 
     with comment_col2:
+        top_neg_df = filtered_df[filtered_df["pred_sentiment"] == "negative"].sort_values(by='RoBERTa_score', ascending=False)
+        top_neg = top_neg_df["review"].head(5)
         style = sentiment_styles["negative"]
-        st.markdown(f"#### {style['label']}")
+        render_comments(style["label"], top_neg, style["bg"], style["text"])
 
-        # Ajouter un menu déroulant pour sélectionner un sujet
-        selected_bad_topic = st.selectbox("Select a topic to filter the bad comments", options=["All"] + labels, key="negative_topic")
 
-        # Filtrer le DataFrame en fonction du sujet sélectionné
-        if selected_bad_topic != "All":
-            topic_filtered_df = filtered_df[filtered_df[selected_bad_topic] > seuil]
-        else:
-            topic_filtered_df = filtered_df
 
-        top_neg_df = topic_filtered_df[topic_filtered_df["pred_sentiment"] == "negative"].sort_values(by='RoBERTa_score', ascending=False)
-        top_neg = top_neg_df["review"].iloc[st.session_state.negative_start_index:st.session_state.negative_start_index+5]
-        render_comments(top_neg, style["bg"], style["text"])
-
-        # Afficher le numéro de la page
-        st.write(f"Page {st.session_state.negative_page}")
-
-        # Ajouter des boutons pour charger les commentaires précédents et suivants
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            if st.session_state.negative_page > 1:
-                if st.button("Previous", key="negative_prev_button"):
-                    st.session_state.negative_start_index -= 5
-                    st.session_state.negative_page -= 1
-                    st.rerun()
-        with col2:
-            if st.session_state.negative_start_index + 5 < len(top_neg_df):
-                if st.button("Next", key="negative_next_button"):
-                    st.session_state.negative_start_index += 5
-                    st.session_state.negative_page += 1
-                    st.rerun()
 # ============================== EMPTY STATE ==============================
 if filtered_df.empty:
     st.warning("No reviews match the selected filters. Try adjusting them.")
