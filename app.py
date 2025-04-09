@@ -229,45 +229,60 @@ with dashboard_tab:
             **NPS = %Promoters - %Detractors**
         """)
 
-    # ============== NPS Title =========================
-    st.markdown("### 🧮 NPS Score ")
-    st.markdown("<div  style='height: 0px;  display: flex; align-items: center;'>", unsafe_allow_html=True)
+    # ============== NPS Container des Promoters, Passives, Detractors =========================
 
-    total_col,nps_col, prom_col,detract_col, passif_col = st.columns(5)
+    # Create two outer columns side by side.
+    total_col, nps_container = st.columns(2)
 
     with total_col:
-        render_metric("📊 Total Reviews", total_reviews, "#2E3B4E", "white")
-    with nps_col:
-        render_metric("NPS Score", f"{nps_score:.1f}", nps_color, nps_text_color)
-
-    with prom_col:
-        render_metric("🙂 Promoters", f"{promoters_pct:.1f}%", "#137830", "#b7f7d0")
-    
-    with detract_col:
-        render_metric("😠 Detractors", f"{detractors_pct:.1f}%", "#aa0000", "#ffb6b6")
-    with passif_col:
-        render_metric("😐 Passives", f"{passives_pct:.1f}%", "#b36500", "#eeeeee")
-
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown(f"""
+            ### 📊 Total Reviews
+            <div style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                text-align: center; 
+                font-size: 50px; 
+                font-weight: bold;
+                width: 130px;
+                height: 110px;
+                margin: auto;">
+                {total_reviews if isinstance(total_reviews, str) else f"{total_reviews:,}"}
+            </div>
+        """, unsafe_allow_html=True)
+                
+    with nps_container:
+        # Use a container to group the NPS Score metric and its nested columns vertically.
+        with st.container():
+            prom_col, passif_col, detract_col = st.columns(3)
+            with prom_col:
+                render_metric("🙂 Promoters", f"{promoters_pct:.1f}%", "#137830", "#b7f7d0")
+            with passif_col:
+                render_metric("😐 Passives", f"{passives_pct:.1f}%", "#b36500", "#eeeeee")
+            with detract_col:
+                render_metric("😠 Detractors", f"{detractors_pct:.1f}%", "#aa0000", "#ffb6b6")
 
     st.divider()
 
 # ============================== LOCATION MAP AND WEEKLY TRENDS ==============================
 
-    # ======= US MAP Tooltip =======
-    with st.expander("ℹ️ About this Map"):
-        st.markdown("""
-        This map shows McDonald's locations across the US. 
-        - **Bubble size** = Number of reviews
-        - **Color** = NPS score (green = high, red = low)
-        - Hover over bubbles to explore store details.
-    """)
 
     # ============= MCdonalds US map ==============
-    st.subheader("🗺️ Mcdonald's US Map")
-    map_col = st.columns(1)[0]
+    
+    nps_col, map_col = st.columns([2,8])
 
     with map_col:
+
+        st.subheader("🗺️ Mcdonald's US Map")
+                # ======= US MAP Tooltip =======
+        with st.expander("ℹ️ About this Map"):
+            st.markdown("""
+            This map shows McDonald's locations across the US. 
+            - **Bubble size** = Number of reviews
+            - **Color** = NPS score (green = high, red = low)
+            - Hover over bubbles to explore store details.
+        """)
+
         if {"latitude", "longitude", "City", "store_address", "pred_sentiment"}.issubset(filtered_df.columns):
             # Préparer les données avec coordonnées uniques + avis + NPS
             location_df = filtered_df.dropna(subset=["latitude", "longitude", "store_address"])
@@ -309,7 +324,6 @@ with dashboard_tab:
                     size_max=30,
                     scope="usa",
                     template="plotly_dark",
-                    title="Location of restaurants (size = reviews, color = NPS)",
                     height=450
                 )
                 fig_map.update_layout(margin=dict(l=0, r=0, t=40, b=10))
@@ -318,13 +332,31 @@ with dashboard_tab:
                 st.info("No location data available after filtering.")
         else:
             st.info("Incomplete location data.")
+    with nps_col:
+        st.markdown("### 🧮 NPS Score ")
+            #========= Tooltip of NPS ==========================
+        with st.expander("ℹ️ What is NPS?", expanded=False):
+            st.markdown("""
+                **Net Promoter Score (NPS)** measures customer loyalty by subtracting the percentage of detractors from promoters.
+                
+                - **Promoters** (positive): Loyal enthusiasts.
+                - **Passives** (neutral): Satisfied but unenthusiastic.
+                - **Detractors** (negative): Unhappy customers.
 
+                **NPS = %Promoters - %Detractors**
+            """)
 
+        render_metric("NPS Score", f"{nps_score:.1f}", nps_color, nps_text_color)
+    
+    
     st.divider()
 
-    
 # ========================== NPS by restaurant Bar Chart ============================ 
-    # ======= NPS by Restaurant Bar chart ==========
+
+    # NPS Scores of restaurants' title
+    st.markdown("### 🏙️ NPS Scores of restaurants")
+
+    # NPS Chart tooltip
     with st.expander("ℹ️ About NPS Scores of restaurants Bar Chart"):
         st.markdown("""
         This chart shows Net Promoter Score (NPS) for each store based on filtered date and location.
@@ -332,9 +364,6 @@ with dashboard_tab:
         - **Higher bars** mean better customer sentiment.
         - Hover over a bar to get restaurant's info like review count, city, and state.
     """)
-
-    # NPS Scores of restaurants' title
-    st.markdown("### 🏙️ NPS Scores of restaurants")
 
     # Retrieve current filters from session stat
     filters = st.session_state.get("selected_filters", {})
@@ -382,7 +411,7 @@ with dashboard_tab:
         fig_nps.update_layout(xaxis_title="NPS Score",yaxis_title="Restaurants") 
         st.plotly_chart(fig_nps, use_container_width=True )
     else:
-        st.info("Aucune donnée disponible pour afficher le NPS par ville.")
+        st.info("No available data for selected City.")
 
     st.divider()
 
