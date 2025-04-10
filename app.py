@@ -7,6 +7,11 @@ import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
+from datetime import datetime
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_mistralai import ChatMistralAI
+import hashlib
 
 # ============================== CONFIG ==============================
 DATA_PATH = Path("data\data_avec_labels.csv")
@@ -16,9 +21,10 @@ st.set_page_config(layout="wide", page_title="Restaurant Review Dashboard", page
 
 st.markdown("""
     <div style='padding-left: 10px; padding-right: 10px;'>
-        <h3>Mcdonald's Dashboard</h3>
+        <h1>Mcdonald's Dashboard</h1>
     </div>
 """, unsafe_allow_html=True)
+
 
 # ============================== LABELISATION =============================
 # Rappel de la liste des labels utilisées par le model
@@ -41,6 +47,7 @@ def load_data(path: Path):
     except Exception as e:
         st.error(f"Error loading data: {e}")
         return pd.DataFrame()
+
 
 # ============================== FILTER DATA ==============================
 def apply_filters(df):
@@ -71,6 +78,12 @@ def apply_filters(df):
         address_list = sorted(df[(df["State"] == selected_state) & (df["City"] == selected_city)]["store_address"].dropna().unique())
     selected_address = st.sidebar.selectbox("Select a Restaurant", ["All"] + address_list)
 
+    # Update State and City based on selected address
+    if selected_address != "All":
+        address_info = df[df["store_address"] == selected_address].iloc[0]
+        selected_state = address_info["State"]
+        selected_city = address_info["City"]
+
     # === Date Filter ===
     st.sidebar.header("📆 Select a Period")
     min_date = df["review_date"].min()
@@ -82,13 +95,14 @@ def apply_filters(df):
         value=min_date,
         min_value=min_date,
         max_value=max_date
-)
+    )
     end_date = st.sidebar.date_input(
-    "End date",
-    value=max_date,
-    min_value=min_date,
-    max_value=max_date
-)
+        "End date",
+        value=max_date,
+        min_value=min_date,
+        max_value=max_date
+    )
+
     # Protect against bad input (e.g. end before start)
     if start_date > end_date:
         st.sidebar.error("❌ End date must be after start date.")
@@ -99,12 +113,12 @@ def apply_filters(df):
     if selected_state != "All":
         filtered_df = filtered_df[filtered_df["State"] == selected_state]
     if selected_city != "All":
-        filtered_df = filtered_df[filtered_df["City"] == selected_city]
+        filtered_df = filtered_df[filtered_df["City"] == selected_city] 
     if selected_address != "All":
-        filtered_df = filtered_df[filtered_df["store_address"] == selected_address]
+        filtered_df = filtered_df[filtered_df["store_address"] == selected_address] 
 
     # Store filters in session
-    st.session_state["selected_filters"] = {
+    current_filters = {
         "state": selected_state,
         "city": selected_city,
         "address": selected_address,
@@ -112,8 +126,19 @@ def apply_filters(df):
         "end_date": end_date
     }
 
-    return filtered_df
+    # Check if filters have changed
+    if "selected_filters" not in st.session_state or st.session_state["selected_filters"] != current_filters:
+        st.session_state["selected_filters"] = current_filters
+        # Reset pagination state
+        st.session_state.positive_start_index = 0
+        st.session_state.negative_start_index = 0
+        st.session_state.positive_page = 1
+        st.session_state.negative_page = 1
+        # Reset topic filter
+        st.session_state.positive_topic = "All"
+        st.session_state.negative_topic = "All"
 
+    return filtered_df
 
 # ============================== UI HELPERS ==============================
 
@@ -133,7 +158,7 @@ def render_metric(label, value, bg_color, text_color):
             text-align:center; 
             font-size:25px; 
             font-weight: bold;
-            width: 150px;
+            width: 156px;
             height: 150px;
             margin: auto;
             color:{text_color};'>
@@ -141,21 +166,58 @@ def render_metric(label, value, bg_color, text_color):
         </div>
     """, unsafe_allow_html=True)
 
+# Prompt system
+sys_prompt = """
+You are a manager at McDonald's, responding to client reviews about the restaurant.
+You need to be extremely polite and speak correct English.
+Thank the client for their review.
+If the review mentions a bad experience, apologize for it and invite the client to come again.
+Limit your answer to two sentences.
+"""
+
+# LangChain pipeline
+template = ChatPromptTemplate.from_messages([
+    ("system", sys_prompt),
+    ("user", "{text}"),
+])
+
+MISTRAL_API_KEY="GgwZtI8i2WGhGuoQsuiecHHthIHpRgr5" # Don't forget to change the key !!!!!
+model = ChatMistralAI(model="mistral-small-latest",mistral_api_key=MISTRAL_API_KEY)
+parser = StrOutputParser()
+chain = template | model | parser  # ✅ Cette variable "chain" est celle à passer à render_comments
+
 
 # Seuil pour filtrer les labels
 seuil = 0.2
 
-def render_comments(comments, color_primary, color_secondary):
+def render_comments(comments, color_primary, color_secondary, chain, sentiment=""):
     """Render a list of comments in stylized boxes."""
     for index, comment in comments.items():
+        if index not in filtered_df.index:
+            continue
         # Récupérer les labels avec un score supérieur au seuil pour ce commentaire
-        labels_above_threshold = df[labels].loc[index] > seuil
-        selected_labels = df[labels].columns[labels_above_threshold].tolist()
+        labels_above_threshold = filtered_df[labels].loc[index] > seuil
+        selected_labels = filtered_df[labels].columns[labels_above_threshold].tolist()
         labels_str = " ".join([f"#{label}" for label in selected_labels])
         formatted_comment = comment.replace('\n', ' ')
-        st.markdown(f"<p style='color:{color_primary};'>💬 {formatted_comment}</p>", unsafe_allow_html=True)
+
+        # Générer une clé unique
+        hash_key = hashlib.md5(f"{index}-{comment}-{sentiment}".encode()).hexdigest()[:8]
+        unique_key = f"show_reply_{hash_key}"
+
+        # Conteneur visuel du commentaire
+        st.markdown(f"<div style='background-color:{color_primary}; padding:10px; border-radius:10px; margin-bottom:10px;'>", unsafe_allow_html=True)
+        st.markdown(f"<div style='color:{color_primary};'>💬 {formatted_comment}</div>", unsafe_allow_html=True)
         st.markdown(f"<p style='color:{color_secondary}; font-weight: bold;'>{labels_str}</p>", unsafe_allow_html=True)
 
+        # Bouton qui déclenche la génération via LLM
+        if st.button("Generate an answer", key=unique_key):
+            with st.spinner("Loading answer..."):
+                generated_response = chain.invoke({"text": formatted_comment})
+
+            st.markdown(f"<p style='color:gray; font-style:italic;'>🤖 {generated_response}</p>", unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
 # ============================== MAIN APP ==============================
 with st.spinner("Loading data..."):
     df = load_data(DATA_PATH)
@@ -197,10 +259,30 @@ max_value_pd = filtered_df["nps_value"].max()* 100
 min_value_pd = filtered_df["nps_value"].min()* 100
 
 
-
 # ============================== METRICS ====================================================
 with dashboard_tab:
     total_reviews = len(filtered_df)
+
+    # ============================== TITLE ==============================
+    ### attention, si changements, ne pas oublier de changer également dans reviews_tab
+    filters = st.session_state.get("selected_filters", {})
+    start = filters.get("start_date")
+    end = filters.get("end_date")
+    
+    # Déterminez le selected_scope en fonction des filtres sélectionnés
+    if filters.get("state")=="All" and filters.get("city")=="All" and filters.get("address")=="All":
+        selected_scope = "All Restaurants"
+    elif filters.get("state") and filters.get("city")=="All" and filters.get("address")=="All":
+        selected_scope = f"All Restaurants, {filters['state']}"
+    elif filters.get("state") and filters.get("city") and filters.get("address")=="All":
+        selected_scope = f"All Restaurants, {filters['city']}, {filters['state']}"
+    elif filters.get("address") and filters.get("city") and filters.get("state"):
+        selected_scope = f"📍 {filters['address']}, {filters['city']}, {filters['state']}"
+    else:
+        selected_scope = "All Restaurants"
+
+    filtered_title = f"{selected_scope} — _{start.strftime('%b %d, %Y')} to {end.strftime('%b %d, %Y')}_"
+    st.markdown(filtered_title)
 
     # ============================== AFFICHAGE DU SCORE NPS GLOBAL ==============================
 
@@ -217,57 +299,57 @@ with dashboard_tab:
     nps_color = "#1aa442" if nps_score > 50 else "#b36500" if nps_score > 0 else "#aa0000"
     nps_text_color = "#ffffff"
 
-    # ============== NPS Container des Promoters, Passives, Detractors =========================
+    #========= Tooltip of NPS ==========================
+    with st.expander("ℹ️ What is NPS?", expanded=False):
+        st.markdown("""
+            **Net Promoter Score (NPS)** measures customer loyalty by subtracting the percentage of detractors from promoters.
+            
+            - **Promoters** (positive): Loyal enthusiasts.
+            - **Passives** (neutral): Satisfied but unenthusiastic.
+            - **Detractors** (negative): Unhappy customers.
 
-    # Create two outer columns side by side.
-    total_col, prom_col, passif_col, detract_col = st.columns(4)
+            **NPS = %Promoters - %Detractors**
+        """)
+
+    # ============== NPS Title =========================
+    st.markdown("### 🧮 NPS Score ")
+    st.markdown("<div  style='height: 0px;  display: flex; align-items: center;'>", unsafe_allow_html=True)
+
+    total_col,nps_col, prom_col,detract_col, passif_col = st.columns(5)
 
     with total_col:
-        st.markdown(f"""
-            ### 📊 Total Reviews
-            <div style="
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                text-align: center; 
-                font-size: 50px; 
-                font-weight: bold;
-                width: 130px;
-                height: 110px;
-                margin: auto;">
-                {total_reviews if isinstance(total_reviews, str) else f"{total_reviews:,}"}
-            </div>
-        """, unsafe_allow_html=True)
-
+        render_metric("📊 Total Reviews", total_reviews, "#2E3B4E", "white")
+    with nps_col:
+        render_metric("NPS Score", f"{nps_score:.1f}", nps_color, nps_text_color)
 
     with prom_col:
         render_metric("🙂 Promoters", f"{promoters_pct:.1f}%", "#137830", "#b7f7d0")
-    with passif_col:
-        render_metric("😐 Passives", f"{passives_pct:.1f}%", "#b36500", "#eeeeee")
+    
     with detract_col:
         render_metric("😠 Detractors", f"{detractors_pct:.1f}%", "#aa0000", "#ffb6b6")
+    with passif_col:
+        render_metric("😐 Passives", f"{passives_pct:.1f}%", "#b36500", "#eeeeee")
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
     st.divider()
 
-# ============================== LOCATION MAP AND WEEKLY TRENDS ==============================
+    # ============================== LOCATION MAP AND WEEKLY TRENDS ==============================
 
+    # ======= US MAP Tooltip =======
+    with st.expander("ℹ️ About this Map"):
+        st.markdown("""
+        This map shows McDonald's locations across the US. 
+        - **Bubble size** = Number of reviews
+        - **Color** = NPS score (green = high, red = low)
+        - Hover over bubbles to explore store details.
+    """)
 
     # ============= MCdonalds US map ==============
-    
-    nps_col, map_col = st.columns([2,8])
+    st.subheader("🗺️ Mcdonald's US Map")
+    map_col = st.columns(1)[0]
 
     with map_col:
-
-        st.subheader("🗺️ Mcdonald's US Map")
-                # ======= US MAP Tooltip =======
-        with st.expander("ℹ️ About this Map"):
-            st.markdown("""
-            This map shows McDonald's locations across the US. 
-            - **Bubble size** = Number of reviews
-            - **Color** = NPS score (green = high, red = low)
-            - Hover over bubbles to explore store details.
-        """)
-
         if {"latitude", "longitude", "City", "store_address", "pred_sentiment"}.issubset(filtered_df.columns):
             # Préparer les données avec coordonnées uniques + avis + NPS
             location_df = filtered_df.dropna(subset=["latitude", "longitude", "store_address"])
@@ -290,7 +372,7 @@ with dashboard_tab:
                 [0.0, "red"],     # minimum NPS
                 [0.4, "orange"],   # neutral
                 [1.0, "green"]    # maximum NPS
-]
+            ]
 
             if not map_data.empty:
                 fig_map = px.scatter_geo(
@@ -309,6 +391,7 @@ with dashboard_tab:
                     size_max=30,
                     scope="usa",
                     template="plotly_dark",
+                    title="Location of restaurants (size = reviews, color = NPS)",
                     height=450
                 )
                 fig_map.update_layout(margin=dict(l=0, r=0, t=40, b=10))
@@ -317,31 +400,13 @@ with dashboard_tab:
                 st.info("No location data available after filtering.")
         else:
             st.info("Incomplete location data.")
-    with nps_col:
-        st.markdown("### 🧮 NPS Score ")
-            #========= Tooltip of NPS ==========================
-        with st.expander("ℹ️ What is NPS?", expanded=False):
-            st.markdown("""
-                **Net Promoter Score (NPS)** measures customer loyalty by subtracting the percentage of detractors from promoters.
-                
-                - **Promoters** (positive): Loyal enthusiasts.
-                - **Passives** (neutral): Satisfied but unenthusiastic.
-                - **Detractors** (negative): Unhappy customers.
 
-                **NPS = %Promoters - %Detractors**
-            """)
 
-        render_metric("NPS Score", f"{nps_score:.1f}", nps_color, nps_text_color)
-    
-    
     st.divider()
 
-# ========================== NPS by restaurant Bar Chart ============================ 
-
-    # NPS Scores of restaurants' title
-    st.markdown("### 🏙️ NPS Scores of restaurants")
-
-    # NPS Chart tooltip
+    
+    # ========================== NPS by restaurant Bar Chart ============================ 
+    # ======= NPS by Restaurant Bar chart ==========
     with st.expander("ℹ️ About NPS Scores of restaurants Bar Chart"):
         st.markdown("""
         This chart shows Net Promoter Score (NPS) for each store based on filtered date and location.
@@ -349,6 +414,9 @@ with dashboard_tab:
         - **Higher bars** mean better customer sentiment.
         - Hover over a bar to get restaurant's info like review count, city, and state.
     """)
+
+    # NPS Scores of restaurants' title
+    st.markdown("### 🏙️ NPS Scores of restaurants")
 
     # Retrieve current filters from session stat
     filters = st.session_state.get("selected_filters", {})
@@ -396,36 +464,94 @@ with dashboard_tab:
         fig_nps.update_layout(xaxis_title="NPS Score",yaxis_title="Restaurants") 
         st.plotly_chart(fig_nps, use_container_width=True )
     else:
-        st.info("No available data for selected City.")
+        st.info("Aucune donnée disponible pour afficher le NPS par ville.")
 
     st.divider()
 
     
 # ============================== TOP TOPICS ==============================
     
+with reviews_tab:
+    # ============================== TITLE ==============================
+    ### attention, si changements, ne pas oublier de changer également dans dashboard_tab
+    filters_tab2 = st.session_state.get("selected_filters", {})
+    start = filters_tab2.get("start_date")
+    end = filters_tab2.get("end_date")
+    
+    # Déterminez le selected_scope en fonction des filtres sélectionnés
+    if filters_tab2.get("state")=="All" and filters_tab2.get("city")=="All" and filters_tab2.get("address")=="All":
+        selected_scope = "All Restaurants"
+    elif filters_tab2.get("state") and filters_tab2.get("city")=="All" and filters_tab2.get("address")=="All":
+        selected_scope = f"All Restaurants, {filters_tab2['state']}"
+    elif filters_tab2.get("state") and filters_tab2.get("city") and filters_tab2.get("address")=="All":
+        selected_scope = f"All Restaurants, {filters_tab2['city']}, {filters_tab2['state']}"
+    elif filters_tab2.get("address") and filters_tab2.get("city") and filters_tab2.get("state"):
+        selected_scope = f"📍 {filters_tab2['address']}, {filters_tab2['city']}, {filters_tab2['state']}"
+    else:
+        selected_scope = "All Restaurants"
 
+    filtered_title = f"{selected_scope} — _{start.strftime('%b %d, %Y')} to {end.strftime('%b %d, %Y')}_"
+    st.markdown(filtered_title)
+
+    # ============================== TOPICS BAR ==============================
+    with st.expander("ℹ️ What is Topic ratio ?", expanded=False):
+        st.markdown("""
+            **The Topic Ratio** measures the significance of a topic's frequency in positive or negative reviews relative to its overall frequency.
+
+            It is calculated as follows:
+            - Positive Topic Ratio = Count in positive reviews / Total count
+            - Negative Topic Ratio = Count in negative reviews / Total count
+
+            Example: A topic with a ratio of 0.7 in the "Most Positive Topics" graph indicates that over all reviews that mention this topic, 70% of them are positive reviews.
+            """)
+        
     topics_col1, topics_col2 = st.columns(2)
 
-    with topics_col1:
-        st.markdown("#### 😍 Most Frequent Positive Topics")
-        positive_df = filtered_df[filtered_df['pred_sentiment'] == 'positive']
-        top_topics = (positive_df[labels] > seuil).sum().sort_values(ascending=False).head(10)        
+    # ==== Initialisation of the topic dataset
+    positive_df = filtered_df[filtered_df['pred_sentiment'] == 'positive']
+    top_topics_pos = (positive_df[labels] > seuil).sum()
+    df_pos = top_topics_pos.reset_index()
+    df_pos.columns = ['labels', 'count_positif']
 
+    negative_df = filtered_df[filtered_df['pred_sentiment'] == 'negative']
+    top_topics_neg = (negative_df[labels] > seuil).sum()
+    df_neg = top_topics_neg.reset_index()
+    df_neg.columns = ['labels', 'count_negatif']
+    
+    topic_df = pd.merge(df_pos, df_neg, on='labels', how='outer')
+
+    # Initialiser les colonnes 'frec_positif' et 'frec_negatif'
+    topic_df["frec_positif"] = None
+    topic_df["frec_negatif"] = None
+    for i in topic_df.index:
+        topic_df.loc[i, "frec_positif"] = (topic_df.loc[i, "count_positif"]) / (topic_df.loc[i, "count_positif"] + topic_df.loc[i, "count_negatif"])
+        topic_df.loc[i, "frec_negatif"] = (topic_df.loc[i, "count_negatif"]) / (topic_df.loc[i, "count_positif"] + topic_df.loc[i, "count_negatif"])
+    
+    with topics_col1:
+        st.markdown("""
+    <div style='padding-left: 10px; padding-right: 10px;'>
+        <h4>😍 Most Positive Topics</h4>
+        <i><h7>Topics with at least 1000 occurrences among positive reviews and ratio above 0.50</h7></i>
+    </div>
+    """, unsafe_allow_html=True)
+
+                    
+        top_topics = topic_df[topic_df["count_positif"]>1000][["labels", "frec_positif"]].sort_values(by="frec_positif", ascending=False)
+        topic_to_show = top_topics[top_topics["frec_positif"]>0.51]
         fig_topics = go.Figure()
 
         fig_topics.add_trace(go.Bar(
-            x=top_topics.values,
-            y=top_topics.index,
+            x=topic_to_show["frec_positif"],
+            y=topic_to_show["labels"],
             orientation='h',
             marker=dict(color='green'),
-            text=top_topics.values,
+            texttemplate='%{x:.2f}',  # Formater le texte pour afficher deux décimales
             textposition='auto',
             hovertemplate='%{y}: %{x} mentions<extra></extra>',
         ))
 
         fig_topics.update_layout(
-            xaxis_title="Mention Count",
-            yaxis_title="Topic",
+            xaxis_title="Topic ratio",
             height=500,
             template="plotly_dark",
             margin=dict(l=20, r=20, t=50, b=20),
@@ -436,25 +562,28 @@ with dashboard_tab:
 
 
     with topics_col2:
-        st.markdown("#### 🤬 Most Frequent Negative Topics")
-        negative_df = filtered_df[filtered_df['pred_sentiment'] == 'negative']
-        top_topics = (negative_df[labels] > seuil).sum().sort_values(ascending=False).head(10)        
-
+        st.markdown("""
+    <div style='padding-left: 10px; padding-right: 10px;'>
+        <h4>🤬 Most Negative Topics</h4>
+        <i><h7>Topics with at least 1000 occurrences among negative reviews and ratio above 0.50</h7></i>
+    </div>
+    """, unsafe_allow_html=True)
+        top_topics = topic_df[topic_df["count_negatif"]>1000][["labels", "frec_negatif"]].sort_values(by="frec_negatif", ascending=False)
+        topic_to_show = top_topics[top_topics["frec_negatif"]>0.51]
         fig_topics = go.Figure()
 
         fig_topics.add_trace(go.Bar(
-            x=top_topics.values,
-            y=top_topics.index,
+            x=topic_to_show["frec_negatif"],
+            y=topic_to_show["labels"],
             orientation='h',
             marker=dict(color='red'),
-            text=top_topics.values,
+            texttemplate='%{x:.2f}',  # Formater le texte pour afficher deux décimales
             textposition='auto',
             hovertemplate='%{y}: %{x} mentions<extra></extra>',
         ))
 
         fig_topics.update_layout(
-            xaxis_title="Mention Count",
-            yaxis_title="Topic",
+            xaxis_title="Topic ratio",
             height=500,
             template="plotly_dark",
             margin=dict(l=20, r=20, t=50, b=20),
@@ -463,7 +592,7 @@ with dashboard_tab:
         fig_topics.update_yaxes(autorange="reversed")  # Most frequent on top
         st.plotly_chart(fig_topics, use_container_width=True)
     
-# ============================== TOP COMMENTS ==============================
+    # ============================== TOP COMMENTS ==============================
     # Initialiser l'état de la session pour le suivi des index de départ et des pages
     if 'positive_start_index' not in st.session_state:
         st.session_state.positive_start_index = 0
@@ -478,9 +607,9 @@ with dashboard_tab:
 
     # Palette de couleurs par sentiment
     sentiment_styles = {
-        "positive": {"bg": "#b7f7d0", "text": "#b7f7d0", "label": "👍 Positive Comments"},
+        "positive": {"bg": "#b7f7d0", "text": "#ffffff", "label": "👍 Positive Comments"},
         "neutral": {"bg": "#4b4b1e", "text": "#f9eec0", "label": "😐 Neutral Comments"},
-        "negative": {"bg": "#ffb6b6", "text": "#ffb6b6", "label": "👎 Negative Comments"},
+        "negative": {"bg": "#ffb6b6", "text": "#ffffff", "label": "👎 Negative Comments"},
     }
 
     with comment_col1:
@@ -498,7 +627,7 @@ with dashboard_tab:
 
         top_pos_df = topic_filtered_df[topic_filtered_df["pred_sentiment"] == "positive"].sort_values(by='RoBERTa_score', ascending=False)
         top_pos = top_pos_df["review"].iloc[st.session_state.positive_start_index:st.session_state.positive_start_index+5]
-        render_comments(top_pos, style["bg"], style["text"])
+        render_comments(top_pos, style["bg"], style["text"], chain, sentiment="positive")
 
         # Afficher le numéro de la page
         st.write(f"Page {st.session_state.positive_page}")
@@ -533,7 +662,7 @@ with dashboard_tab:
 
         top_neg_df = topic_filtered_df[topic_filtered_df["pred_sentiment"] == "negative"].sort_values(by='RoBERTa_score', ascending=False)
         top_neg = top_neg_df["review"].iloc[st.session_state.negative_start_index:st.session_state.negative_start_index+5]
-        render_comments(top_neg, style["bg"], style["text"])
+        render_comments(top_neg, style["bg"], style["text"], chain, sentiment="negative")
 
         # Afficher le numéro de la page
         st.write(f"Page {st.session_state.negative_page}")
