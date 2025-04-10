@@ -34,15 +34,7 @@ This project focuses on **sentiment analysis of customer comments** related to M
 2. 🧠 **Sentiment Analysis** using a pre-trained NLP model  
 3. 🗂️ **Thematic Categorization** of reviews  
 4. 📈 **Interactive Dashboard** for data visualization  
-5. 📝 **Summary of Negative Feedback**
-
----
-
-## 🌱 Future Improvements
-
-- 💬 **LLM-Powered Auto-Responses**
-  - Use a contextual LLM to understand and respond to positive or negative feedback.
-  - Fine-tune a model to **generate personalized replies** that match the tone and content of each comment.
+5. 📝 **LLM-Powered Auto-Responses** to understand and respond to positive or negative feedback.
 
 ---
 
@@ -67,10 +59,6 @@ customer-sentiment-analysis/
 │
 ├── data/                   
 ├── notebooks/              
-├── src/                    
-│   ├── sentiment_analysis/
-│   ├── theme_classifier/
-│   └── api_client/
 ├── app/                    
 ├── models/                 
 ├── README.md
