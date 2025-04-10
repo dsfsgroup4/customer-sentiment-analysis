@@ -9,3 +9,4 @@ seaborn
 pathlib
 datetime
 nltk
+python-dotenv
