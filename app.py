@@ -12,8 +12,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_mistralai import ChatMistralAI
 import hashlib
+import os
+from dotenv import load_dotenv
 
-# ============================== CONFIG ==============================
+# ============================== CONFIG ===================================
 DATA_PATH = Path("data\data_avec_labels.csv")
 
 # ============================== PAGE SETUP ==============================
@@ -181,8 +183,10 @@ template = ChatPromptTemplate.from_messages([
     ("user", "{text}"),
 ])
 
-MISTRAL_API_KEY="GgwZtI8i2WGhGuoQsuiecHHthIHpRgr5" # Don't forget to change the key !!!!!
-model = ChatMistralAI(model="mistral-small-latest",mistral_api_key=MISTRAL_API_KEY)
+# MISTRAL API KEY: real key is saved in the .env
+load_dotenv()
+mistral_api_key = os.getenv("MISTRAL_API_KEY")
+model = ChatMistralAI(model="mistral-small-latest",mistral_api_key=mistral_api_key)
 parser = StrOutputParser()
 chain = template | model | parser  # ✅ Cette variable "chain" est celle à passer à render_comments
 
@@ -254,9 +258,10 @@ passives_pct = (filtered_df["nps_value"] == 0).mean() * 100
 # NPS Global
 nps_score = promoters_pct - detractors_pct
 
-#liste the NPS max et minim
-max_value_pd = filtered_df["nps_value"].max()* 100
-min_value_pd = filtered_df["nps_value"].min()* 100
+### MAP NPS SCORE pour les bubbles 
+df['nps_val_sentiment'] = df["pred_sentiment"].map(sentiment_mapping).fillna(0)
+df["review_count"] = df.groupby("store_address")["review"].transform("count")
+filtered_NPS_df = df[df["review_count"] > 100]
 
 
 # ============================== METRICS ====================================================
@@ -299,115 +304,184 @@ with dashboard_tab:
     nps_color = "#1aa442" if nps_score > 50 else "#b36500" if nps_score > 0 else "#aa0000"
     nps_text_color = "#ffffff"
 
-    #========= Tooltip of NPS ==========================
-    with st.expander("ℹ️ What is NPS?", expanded=False):
-        st.markdown("""
-            **Net Promoter Score (NPS)** measures customer loyalty by subtracting the percentage of detractors from promoters.
-            
-            - **Promoters** (positive): Loyal enthusiasts.
-            - **Passives** (neutral): Satisfied but unenthusiastic.
-            - **Detractors** (negative): Unhappy customers.
+    # ============== Affichage Metrics (Total Reviews, Prom, Pass, Detra) =========================
 
-            **NPS = %Promoters - %Detractors**
-        """)
-
-    # ============== NPS Title =========================
-    st.markdown("### 🧮 NPS Score ")
-    st.markdown("<div  style='height: 0px;  display: flex; align-items: center;'>", unsafe_allow_html=True)
-
-    total_col,nps_col, prom_col,detract_col, passif_col = st.columns(5)
+    total_col, prom_col, passif_col, detract_col = st.columns(4)
 
     with total_col:
-        render_metric("📊 Total Reviews", total_reviews, "#2E3B4E", "white")
-    with nps_col:
-        render_metric("NPS Score", f"{nps_score:.1f}", nps_color, nps_text_color)
+        st.markdown(f"""
+            ### 📊 Total Reviews
+            <div style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                text-align: center; 
+                font-size: 50px; 
+                font-weight: bold;
+                width: 130px;
+                height: 110px;
+                margin: auto;">
+                {total_reviews if isinstance(total_reviews, str) else f"{total_reviews:,}"}
+            </div>
+        """, unsafe_allow_html=True)
+
 
     with prom_col:
         render_metric("🙂 Promoters", f"{promoters_pct:.1f}%", "#137830", "#b7f7d0")
-    
-    with detract_col:
-        render_metric("😠 Detractors", f"{detractors_pct:.1f}%", "#aa0000", "#ffb6b6")
     with passif_col:
         render_metric("😐 Passives", f"{passives_pct:.1f}%", "#b36500", "#eeeeee")
-
-    st.markdown("</div>", unsafe_allow_html=True)
+    with detract_col:
+        render_metric("😠 Detractors", f"{detractors_pct:.1f}%", "#aa0000", "#ffb6b6")
 
     st.divider()
 
-    # ============================== LOCATION MAP AND WEEKLY TRENDS ==============================
+    # ====================== AFFICHAGE NPS SCORE AND LOCATION MAP AND WEEKLY TRENDS ==============================
 
-    # ======= US MAP Tooltip =======
-    with st.expander("ℹ️ About this Map"):
-        st.markdown("""
-        This map shows McDonald's locations across the US. 
-        - **Bubble size** = Number of reviews
-        - **Color** = NPS score (green = high, red = low)
-        - Hover over bubbles to explore store details.
-    """)
 
     # ============= MCdonalds US map ==============
-    st.subheader("🗺️ Mcdonald's US Map")
-    map_col = st.columns(1)[0]
+
+    nps_col , map_col = st.columns([2,8])
 
     with map_col:
-        if {"latitude", "longitude", "City", "store_address", "pred_sentiment"}.issubset(filtered_df.columns):
-            # Préparer les données avec coordonnées uniques + avis + NPS
-            location_df = filtered_df.dropna(subset=["latitude", "longitude", "store_address"])
 
-            # Calcul des nps_value
+        st.markdown("### 🗺️ Mcdonald's US Map")
+        
+        # US MAP Tooltip
+        with st.expander("ℹ️ About this Map"):
+            st.markdown("""
+            This map shows McDonald's locations across the US. 
+            - **Bubble size** = Number of reviews
+            - **Color** = NPS score (green = high, red = low)
+            - Hover over bubbles to explore store details.
+        """)
+
+        required_cols = {"latitude", "longitude", "City", "store_address", "pred_sentiment", "clean_reviews"}
+        if required_cols.issubset(filtered_df.columns):
+
+            # Prepare data: drop missing coordinates and compute NPS value
+            location_df = filtered_df.dropna(subset=["latitude", "longitude", "store_address"])
             location_df["nps_value"] = location_df["pred_sentiment"].apply(compute_nps_value)
 
-
-            # Grouper par restaurant (coordonnées + adresse)
-            map_data = location_df.groupby(["latitude", "longitude", "store_address"]).agg(
+            # Group by store location
+            map_data = location_df.groupby(["store_address","City","State","latitude", "longitude", ]).agg(
                 review_count=("clean_reviews", "count"),
-                nps_score=("nps_value", lambda x: (x == 1).mean()*100 - (x == -1).mean()*100)
+                nps_score=("nps_value", lambda x: (x == 1).mean() * 100 - (x == -1).mean() * 100)
             ).reset_index()
 
-            # Color scale is constant regardless of data
-            fixed_nps_range = [min_value_pd, max_value_pd]
-                                        
-            # Define custom color gradient (red to white to green)
-            custom_nps_scale = [
-                [0.0, "red"],     # minimum NPS
-                [0.4, "orange"],   # neutral
-                [1.0, "green"]    # maximum NPS
-            ]
+            # Filter stores with more than 100 reviews
+            map_data = map_data[map_data["review_count"] > 100]
 
             if not map_data.empty:
+                # Scale bubble size
+                map_data["size_scaled"] = map_data["review_count"].apply(lambda x: min(x, 100))
+
+                # Define fixed color scale (same visual logic every time)
+                custom_nps_scale_map = [
+                    [0.0, "red"],
+                    [0.3, "red"],
+                    [0.5, "white"],
+                    [0.6, "green"],
+                    [1.0, "green"]
+                ]
+
                 fig_map = px.scatter_geo(
                     map_data,
+                    hover_data={
+                        "nps_score": ':.1f',
+                        "review_count": True,
+                        "City": True,
+                        "State":True
+                    },
                     lat="latitude",
                     lon="longitude",
-                    size="review_count",
+                    size="size_scaled",
                     color="nps_score",
-                    color_continuous_scale=custom_nps_scale,
-                    range_color=fixed_nps_range,
+                    color_continuous_scale=custom_nps_scale_map,
+                    range_color=[-70,70],
                     hover_name="store_address",
-                    hover_data={
-                    "nps_score": ':.1f',
-                    "review_count": True
-                        },
-                    size_max=30,
+                    size_max=15,
                     scope="usa",
-                    template="plotly_dark",
-                    title="Location of restaurants (size = reviews, color = NPS)",
-                    height=450
+                    template="plotly_dark"
                 )
-                fig_map.update_layout(margin=dict(l=0, r=0, t=40, b=10))
+
+                fig_map.update_layout(
+                    margin=dict(l=0, r=0, t=50, b=10),
+                    coloraxis_colorbar=dict(
+                        title="NPS Score"
+                    )
+                )
+
                 st.plotly_chart(fig_map, use_container_width=True, config={'displayModeBar': False})
+
+                #--------- Add a caption under the map--------------------
+                # Safely extract filters
+                state = filters.get("state")
+                city = filters.get("city")
+                address = filters.get("address")
+                start = filters.get("start_date")
+                end = filters.get("end_date")
+
+                # Determine the dynamic location label
+                if address and address != "All":
+                    location_label = f"📍 Store at {address}"
+                elif city and city != "All":
+                    location_label = f"🏙️ City: {city}"
+                elif state and state != "All":
+                    location_label = f"🗺️ State: {state}"
+                else:
+                    location_label = "All Restaurants (Data only available for restaurants with more than 100 reviews)"
+
+                # Compose the full dynamic caption
+                if start and end:
+                    caption = (
+                        f"{location_label}<br>"
+                        f"📅 From {start.strftime('%b %d, %Y')} to {end.strftime('%b %d, %Y')}<br>"
+                    )
+                else:
+                    caption = (
+                        f"{location_label}<br>"
+                    )
+
+                # Display the caption under the map
+                st.markdown(
+                    f"<div style='text-align:center; font-size:16px; margin-top:-10px;'>{caption}</div>",
+                    unsafe_allow_html=True
+                )
+
+
             else:
-                st.info("No location data available after filtering.")
+                st.info("No location data available.")
         else:
             st.info("Incomplete location data.")
 
+#================= NPS SCORE ==========================
+    with nps_col:
+        st.markdown("### 🧮 NPS Score ")
+        
+        #Tooltip of NPS 
+        with st.expander("ℹ️ What is NPS?", expanded=False):
+            st.markdown("""
+                **Net Promoter Score (NPS)** measures customer loyalty by subtracting the percentage of detractors from promoters.
+                
+                - **Promoters** (positive): Loyal enthusiasts.
+                - **Passives** (neutral): Satisfied but unenthusiastic.
+                - **Detractors** (negative): Unhappy customers.
 
-    st.divider()
+                **NPS = %Promoters - %Detractors**
+            """)
 
+        render_metric("NPS Score", f"{nps_score:.1f}", nps_color, nps_text_color)
+        st.subheader(f"")
     
-    # ========================== NPS by restaurant Bar Chart ============================ 
-    # ======= NPS by Restaurant Bar chart ==========
-    with st.expander("ℹ️ About NPS Scores of restaurants Bar Chart"):
+    st.divider()
+    
+# ========================== NPS by restaurant Bar Chart ============================ 
+    
+    # NPS Scores of restaurants' title
+    st.markdown("### 🏙️ Restaurants performances")
+
+    # NPS BAR CHART Tooltip 
+    with st.expander("ℹ️ About this bar chart"):
         st.markdown("""
         This chart shows Net Promoter Score (NPS) for each store based on filtered date and location.
         
@@ -415,22 +489,15 @@ with dashboard_tab:
         - Hover over a bar to get restaurant's info like review count, city, and state.
     """)
 
-    # NPS Scores of restaurants' title
-    st.markdown("### 🏙️ NPS Scores of restaurants")
 
     # Retrieve current filters from session stat
     filters = st.session_state.get("selected_filters", {})
     start = filters.get("start_date")
     end = filters.get("end_date")
 
-    # Build dynamic title based on the "address" filter:
-    selected_scope = "All Restaurants" if filters.get("address") == "All" else f"📍 {filters.get('address')}"
-    nps_title = f"**NPS per Restaurant for:** {selected_scope} — _{start.strftime('%b %d, %Y')} to {end.strftime('%b %d, %Y')}_"
-
-    # Display the dynamic title in the app
-    st.markdown(nps_title)
 
     if "store_address" in filtered_df.columns and not filtered_df["store_address"].isna().all():
+        
         # Group by restaurant and compute NPS score as the difference between the percentage of promoters and detractors
         nps_by_restaurant = (
             filtered_df.groupby("store_address")
@@ -444,13 +511,30 @@ with dashboard_tab:
             .sort_values("NPS", ascending=True)  # Sort from highest to lowest NPS
         )
 
+        # Cap review count for visualization
+        nps_by_restaurant = nps_by_restaurant[nps_by_restaurant["review_count"] > 100]
+        
+        # Sort after filtering
+        nps_by_restaurant = nps_by_restaurant.sort_values("NPS", ascending=False)
+
+        # Define custom color gradient (red to white to green)
+        custom_nps_scale_bar = [
+                [0.0, "red"], 
+                [0.3, "red"],    
+                [0.5, "white"],
+                [0.6, "green"],  
+                [1.0, "green"]  
+            ]
+
+        # BAR CHART restaurants par NPS Score
         fig_nps = px.bar(
             nps_by_restaurant,
-            x="NPS",
-            y="store_address",
-            orientation="h",
+            x="store_address",
+            y="NPS",
+            orientation="v",
             color="NPS",
-            color_continuous_scale=custom_nps_scale,
+            range_color=[-60 , 60],
+            color_continuous_scale=custom_nps_scale_bar,
             hover_data={
                 "NPS": ":.2f",
                 "review_count": True,
@@ -458,13 +542,25 @@ with dashboard_tab:
                 "State": True
                         },
             template="plotly_dark",
-            height=700
+            height=600
         )
+
         # Rotate x-axis labels to improve readability
-        fig_nps.update_layout(xaxis_title="NPS Score",yaxis_title="Restaurants") 
+        fig_nps.update_layout(xaxis_title="Restaurants",yaxis_title="NPS Score", xaxis_tickangle=-45 ) 
         st.plotly_chart(fig_nps, use_container_width=True )
+
+        # Build dynamic title based on the "address" filter:
+        selected_scope = "All Restaurants with more than 100 reviews" if filters.get("address") == "All" else f"📍 {filters.get('address')}"
+        nps_title = f"NPS Score of {selected_scope} — {start.strftime('%b %d, %Y')} to {end.strftime('%b %d, %Y')}"
+
+        # Display the dynamic title in the app
+        st.markdown(f"""<div style='text-align:center; font-size:16px; margin-top:-10px;'>
+                    {nps_title}
+                    </div>""",
+                    unsafe_allow_html=True)
+
     else:
-        st.info("Aucune donnée disponible pour afficher le NPS par ville.")
+        st.info("No available data for selected City.")
 
     st.divider()
 
