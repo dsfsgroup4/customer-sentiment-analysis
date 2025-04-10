@@ -520,28 +520,33 @@ with reviews_tab:
     
     topic_df = pd.merge(df_pos, df_neg, on='labels', how='outer')
 
-    # Initialiser les colonnes 'frec_positif' et 'frec_negatif'
-    topic_df["frec_positif"] = None
-    topic_df["frec_negatif"] = None
+    # Initialiser les colonnes 'frec_positif_vs_posneg' 'frec_negatif_vs_posneg' 'frec_positif_vs_totpos' 'frec_negatif_vs_totneg'
+    topic_df["frec_positif_vs_posneg"] = None
+    topic_df["frec_negatif_vs_posneg"] = None
+    topic_df["frec_positif_vs_totpos"] = None
+    topic_df["frec_negatif_vs_totneg"] = None
+
     for i in topic_df.index:
-        topic_df.loc[i, "frec_positif"] = (topic_df.loc[i, "count_positif"]) / (topic_df.loc[i, "count_positif"] + topic_df.loc[i, "count_negatif"])
-        topic_df.loc[i, "frec_negatif"] = (topic_df.loc[i, "count_negatif"]) / (topic_df.loc[i, "count_positif"] + topic_df.loc[i, "count_negatif"])
-    
+        topic_df.loc[i, "frec_positif_vs_posneg"] = (topic_df.loc[i, "count_positif"]) / (topic_df.loc[i, "count_positif"] + topic_df.loc[i, "count_negatif"])
+        topic_df.loc[i, "frec_negatif_vs_posneg"] = (topic_df.loc[i, "count_negatif"]) / (topic_df.loc[i, "count_positif"] + topic_df.loc[i, "count_negatif"])
+        topic_df.loc[i, "frec_positif_vs_totpos"] = ((topic_df.loc[i, "count_positif"]) / (topic_df["count_positif"].sum()))*100
+        topic_df.loc[i, "frec_negatif_vs_totneg"] = ((topic_df.loc[i, "count_negatif"]) / (topic_df["count_negatif"].sum()))*100
+
     with topics_col1:
         st.markdown("""
     <div style='padding-left: 10px; padding-right: 10px;'>
         <h4>😍 Most Positive Topics</h4>
-        <i><h7>Topics with at least 1000 occurrences among positive reviews and ratio above 0.50</h7></i>
+        <i><h7>Topics with at least 5% occurrences among positive reviews and ratio above 0.50</h7></i>
     </div>
     """, unsafe_allow_html=True)
 
                     
-        top_topics = topic_df[topic_df["count_positif"]>1000][["labels", "frec_positif"]].sort_values(by="frec_positif", ascending=False)
-        topic_to_show = top_topics[top_topics["frec_positif"]>0.51]
+        top_topics = topic_df[topic_df["frec_positif_vs_totpos"]>5][["labels", "frec_positif_vs_posneg"]].sort_values(by="frec_positif_vs_posneg", ascending=False)
+        topic_to_show = top_topics[top_topics["frec_positif_vs_posneg"]>0.51]
         fig_topics = go.Figure()
 
         fig_topics.add_trace(go.Bar(
-            x=topic_to_show["frec_positif"],
+            x=topic_to_show["frec_positif_vs_posneg"],
             y=topic_to_show["labels"],
             orientation='h',
             marker=dict(color='green'),
@@ -565,15 +570,15 @@ with reviews_tab:
         st.markdown("""
     <div style='padding-left: 10px; padding-right: 10px;'>
         <h4>🤬 Most Negative Topics</h4>
-        <i><h7>Topics with at least 1000 occurrences among negative reviews and ratio above 0.50</h7></i>
+        <i><h7>Topics with at least 5% occurrences among negative reviews and ratio above 0.50</h7></i>
     </div>
     """, unsafe_allow_html=True)
-        top_topics = topic_df[topic_df["count_negatif"]>1000][["labels", "frec_negatif"]].sort_values(by="frec_negatif", ascending=False)
-        topic_to_show = top_topics[top_topics["frec_negatif"]>0.51]
+        top_topics = topic_df[topic_df["frec_negatif_vs_totneg"]>5][["labels", "frec_negatif_vs_posneg"]].sort_values(by="frec_negatif_vs_posneg", ascending=False)
+        topic_to_show = top_topics[top_topics["frec_negatif_vs_posneg"]>0.51]
         fig_topics = go.Figure()
 
         fig_topics.add_trace(go.Bar(
-            x=topic_to_show["frec_negatif"],
+            x=topic_to_show["frec_negatif_vs_posneg"],
             y=topic_to_show["labels"],
             orientation='h',
             marker=dict(color='red'),
