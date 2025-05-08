@@ -61,6 +61,6 @@ customer-sentiment-analysis/
 ├── notebooks/              
 ├── app/                    
 ├── models/                 
-├── README.md
+├── README.md/  
 └── requirements.txt
 
